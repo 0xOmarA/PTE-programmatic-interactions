@@ -81,7 +81,7 @@ fn main() {
             network: transaction::model::Network::InternalTestnet,
             start_epoch_inclusive: 0,
             end_epoch_exclusive: 100,
-            nonce: account_creation_nonce,
+            nonce: xrd_transfer_nonce,
             notary_public_key: notary_private_key.public_key(),
             notary_as_signatory: false,
         })
