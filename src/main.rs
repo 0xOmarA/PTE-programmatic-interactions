@@ -1,4 +1,5 @@
 use scrypto::{prelude::*, to_struct};
+use scrypto::core::Network;
 use transaction::builder::{ManifestBuilder, TransactionBuilder};
 use transaction::manifest::{decompile, DecompileError};
 use transaction::model::{Instruction, NotarizedTransaction, TransactionHeader};
@@ -78,7 +79,7 @@ fn main() {
         )
         .header(TransactionHeader {
             version: 1,
-            network: transaction::model::Network::InternalTestnet,
+            network: scrypto::core::Network::LocalSimulator,
             start_epoch_inclusive: 0,
             end_epoch_exclusive: 100,
             nonce: xrd_transfer_nonce,
