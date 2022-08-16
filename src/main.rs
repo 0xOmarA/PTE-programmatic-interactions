@@ -1,8 +1,11 @@
-use scrypto::{prelude::*, to_struct};
+use scrypto::address::Bech32Encoder;
 use scrypto::core::Network;
+use scrypto::{prelude::*, to_struct};
 use transaction::builder::{ManifestBuilder, TransactionBuilder};
 use transaction::manifest::{decompile, DecompileError};
-use transaction::model::{Instruction, NotarizedTransaction, TransactionHeader};
+use transaction::model::{
+    Instruction, NotarizedTransaction, TransactionHeader, TRANSACTION_VERSION_V1,
+};
 use transaction::signing::EcdsaPrivateKey;
 
 // Used to handle the JSON serialization and deserialization
@@ -31,21 +34,23 @@ fn main() {
     let account_creation_nonce: u64 = rand::thread_rng().gen_range(0..100);
     let account_creation_tx: NotarizedTransaction = TransactionBuilder::new()
         .manifest(
-            ManifestBuilder::new()
-                .call_method(SYSTEM_COMPONENT, "free_xrd", vec![])
+            ManifestBuilder::new(Network::LocalSimulator)
+                .call_method(SYSTEM_COMPONENT, "free_xrd", to_struct!())
                 .take_from_worktop(RADIX_TOKEN, |builder, bucket_id| {
                     builder.new_account_with_resource(&withdraw_auth, bucket_id)
                 })
                 .build(),
         )
         .header(TransactionHeader {
-            version: 1,
-            network: transaction::model::Network::InternalTestnet,
+            version: TRANSACTION_VERSION_V1,
+            network: Network::LocalSimulator,
             start_epoch_inclusive: 0,
             end_epoch_exclusive: 100,
             nonce: account_creation_nonce,
-            notary_public_key: notary_private_key.public_key(),
+            notary_public_key: notary_public_key,
             notary_as_signatory: false,
+            cost_unit_limit: u32::MAX,
+            tip_percentage: 5,
         })
         .sign(&user_private_key)
         .notarize(&notary_private_key)
@@ -63,8 +68,12 @@ fn main() {
     let xrd_transfer_nonce: u64 = rand::thread_rng().gen_range(0..100);
     let xrd_transfer_tx: NotarizedTransaction = TransactionBuilder::new()
         .manifest(
-            ManifestBuilder::new()
-                .withdraw_from_account_by_amount(dec!("10000"), RADIX_TOKEN, account_component_address)
+            ManifestBuilder::new(Network::LocalSimulator)
+                .withdraw_from_account_by_amount(
+                    dec!("10000"),
+                    RADIX_TOKEN,
+                    account_component_address,
+                )
                 .take_from_worktop(RADIX_TOKEN, |builder, bucket_id| {
                     builder.call_method(
                         ComponentAddress::from_str(
@@ -72,19 +81,21 @@ fn main() {
                         )
                         .unwrap(),
                         "deposit",
-                        to_struct!(scrypto::resource::Bucket(bucket_id))
+                        to_struct!(scrypto::resource::Bucket(bucket_id)),
                     )
                 })
-                .build()
+                .build(),
         )
         .header(TransactionHeader {
-            version: 1,
-            network: scrypto::core::Network::LocalSimulator,
+            version: TRANSACTION_VERSION_V1,
+            network: Network::LocalSimulator,
             start_epoch_inclusive: 0,
             end_epoch_exclusive: 100,
             nonce: xrd_transfer_nonce,
-            notary_public_key: notary_private_key.public_key(),
+            notary_public_key: notary_public_key,
             notary_as_signatory: false,
+            cost_unit_limit: u32::MAX,
+            tip_percentage: 5,
         })
         .sign(&user_private_key)
         .notarize(&notary_private_key)
@@ -120,21 +131,32 @@ pub fn submit_transaction(
         })
         .collect();
 
-    let notray_signature: Signature = Signature {
-        public_key: transaction.signed_intent.intent.header.notary_public_key.to_string(),
+    // At the current moment of time, the PTE's API does not define anything relating to the notary's signature. So,
+    // for the time being, this is not being used. However, this will be used in the future once the notary stuff is
+    // all figured out on the PTE's side. 
+    let _notray_signature: Signature = Signature {
+        public_key: transaction
+            .signed_intent
+            .intent
+            .header
+            .notary_public_key
+            .to_string(),
         signature: transaction.notary_signature.to_string(),
     };
 
     // Creating the transaction body object which is what will be submitted to the PTE
     let transaction_body: TransactionBody = TransactionBody {
-        // manifest: decompile(&transaction.transaction)?,
-        manifest: decompile(&transaction.signed_intent.intent.manifest)
-            .map_err(|err| TransactionSubmissionError::DecompileError(err))?,
+        manifest: decompile(
+            &transaction.signed_intent.intent.manifest,
+            &Bech32Encoder::new_from_network(&Network::LocalSimulator),
+        )
+        .map_err(TransactionSubmissionError::DecompileError)?,
         nonce: nonce,
         signatures: signatures,
     };
 
     // Submitting the transaction to the PTE's `/transaction` endpoint
+    panic!("I put this error message here. The PTE does not currently run 0.5.0 so the following request to the PTE's API wont work");
     let receipt: Receipt = reqwest::blocking::Client::new()
         .post("https://pte01.radixdlt.com/transaction")
         .json(&transaction_body)
